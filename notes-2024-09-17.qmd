@@ -1,0 +1,205 @@
+---
+title: "notes-2024-09-17"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+## Fit a straight line
+
+Using `ggplot2` we can plot straight lines with a specified intercept and slope.
+
+
+```{r}
+
+
+library(tidyverse)
+
+ggplot(data.frame(x = c(1, 2, 3, 3, 4, 5), 
+                  y = c(2, 3, 1, 3, 2, 3)), 
+       aes(x, y)) + 
+        
+ 
+  geom_point(size = 3) +
+  
+ geom_abline(slope = 0, intercept = 2.2, color = "orange", linewidth  = 1) + 
+ geom_abline(slope = 0.1, intercept = 2.033, color = "steelblue", linewidth  = 1) + 
+  geom_abline(slope = 0.1, intercept = 2.033, color = "steelblue", linewidth  = 1) + 
+  
+  
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+        
+        scale_y_continuous(limits = c(0, 5)) +
+        
+        scale_x_continuous(limits = c(0, 5))
+
+
+
+```
+
+
+## Fit a regression model
+
+
+```{r}
+
+library(exscidata)
+
+dat <- cyclingstudy %>%
+  filter(timepoint == "pre") %>%
+  select(subject, VO2.max, height.T1) %>%
+  print()
+
+## Fit the model using lm
+
+m <- lm(VO2.max ~ height.T1, data = dat) 
+
+
+dat$resid <- resid(m)
+dat$fitted <- fitted(m)
+
+
+## Plot fitted values against predictor variable
+
+## Coefficients
+
+
+
+
+
+dat %>%
+  ggplot(aes(height.T1, fitted)) + 
+  
+  geom_abline(intercept = coef(m)[1], slope = coef(m)[2], 
+              color = "orange") +
+  
+  geom_point(size = 3) + 
+  
+  geom_point(aes(height.T1, VO2.max), 
+             shape = 21, fill = "lightblue", 
+             size = 3) + 
+  
+  geom_segment(aes(x = height.T1, xend = height.T1, 
+                   y = fitted, yend = fitted + resid), 
+               color = "red")
+  
+  
+
+
+```
+
+## Predict and compare
+
+
+
+```{r}
+
+# Diference between an individual of height 175 and 185
+
+preds <- predict(m, newdata = data.frame(height.T1 = c(175, 185)))
+
+preds[2] - preds[1]
+
+coef(m)[2] * 10
+
+```
+
+
+```{r}
+
+## What is the predicted VO2max at height 201
+
+
+# b0 + b1 * 201
+coef(m)[1] + coef(m)[2] * 201
+
+coef(m)[1] + coef(m)[2] * 240
+
+
+
+
+```
+
+
+## Independent observations and linear relationship
+
+```{r}
+
+exscidata::cyclingstudy %>%
+  mutate(height.T1 = mean(height.T1, na.rm = TRUE), 
+         .by = subject) %>%
+        filter(timepoint == "pre") %>% # No pseudo-replication
+        select(subject, height.T1, VO2.max) %>%
+        ggplot(aes(height.T1, VO2.max)) + 
+  geom_point(size = 2, fill = "orchid", shape = 21) + 
+        geom_smooth(se = FALSE) + 
+        geom_smooth(se = FALSE, method = "lm", color = "red") +
+        geom_smooth(method = "lm", formula = y ~ poly(x, 2), 
+                    color = "green", se = FALSE) + 
+  theme_classic()
+
+
+
+```
+
+## Normal residuals and constant variance
+
+```{r}
+
+
+m1 <- lm(VO2.max ~ height.T1, data = exscidata::cyclingstudy)
+
+
+exscidata::cyclingstudy %>%
+        filter(timepoint == "pre") %>%
+        select(subject, group, VO2.max, height.T1)  %>%
+        mutate(resid = resid(m1), 
+               st.resid = resid/sd(resid)) %>%
+        ggplot(aes(sample = st.resid)) +
+         stat_qq(size = 3, fill = "lightblue", shape = 21) + 
+                 stat_qq_line() +
+        labs(title = "A qq-plot of residuals") +
+                 theme_minimal()
+
+
+
+
+```
+
+Constant variance
+
+
+```{r}
+
+
+exscidata::cyclingstudy %>%
+        filter(timepoint == "pre") %>%
+        select(subject, group, VO2.max, height.T1)  %>%
+        mutate(resid = resid(m1), 
+               fitted = fitted(m1),
+               st.resid = resid/sd(resid)) %>%
+        ggplot(aes(fitted, st.resid)) +
+  
+
+  geom_hline(yintercept = 0, lty = 2, color = "red") +
+  
+           geom_point(size = 2)   +        
+                 
+        labs(title = "A residual plot") +
+                 theme_minimal()
+
+
+
+```
+
+### Model assumptions in R
+
+
+```{r}
+plot(m)
+```
+
+
+
+
+
