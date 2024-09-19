@@ -1,0 +1,196 @@
+---
+title: "Notes 2024-09-19"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+## Interpreting regression models
+
+
+
+```{r}
+
+library(tidyverse)
+
+data.frame(x = c(0, 200), 
+           y = c(-2000, 5000)) %>%
+        ggplot(aes(x, y)) + 
+        
+        geom_blank() + # Draws an empty canvas with scales
+        
+        geom_abline(intercept = -1945, slope = 38.2) + 
+        
+        coord_cartesian(xlim = c(120, 180), 
+                        ylim = c(1000, 5000))
+
+
+
+```
+
+
+Calculate VO2max when height is 155
+
+```{r}
+
+vo2max <- -1945 + 38.2 * 155
+
+```
+
+
+
+## Performance and VO2max
+
+
+```{r}
+
+
+intercept <- 1548
+slope <- -12.4
+
+
+data.frame(name = c("Anders", "Sigvard"), 
+           VO2max = c(78.4, 72.9)) %>%
+  mutate(performance = intercept + slope * VO2max) %>%
+  
+ 
+  
+  ggplot(aes(VO2max, performance, color = name)) + 
+  
+  geom_abline(intercept = intercept, 
+              slope = slope) +
+  
+  geom_point(size = 3)
+  
+
+```
+
+
+
+## Dummy variables with an interaction 
+
+
+```{r}
+#| warning: false
+#| message: false
+#| echo: true
+
+
+intercept <- 8.2
+b1 <- 4.4
+b2 <- -3.9
+b3 <- 2.7
+
+dat <- data.frame(group = c("ctrl", "ctrl", "expr", "expr"), 
+                  sex = c("female", "male", "female", "male")) %>%
+  print()
+
+dat %>%
+  # create a dummy variable
+        mutate(xgroup = if_else(group == "ctrl", 0, 1), 
+               xsex = if_else(sex == "female", 0, 1), 
+               interaction = xgroup * xsex) %>%
+
+  # do predictions
+        mutate(delta_strength = intercept + b1 * xgroup + b2 * xsex + b3 * interaction)  %>% 
+  
+  ggplot(aes(group, delta_strength, fill = sex)) + 
+  
+  geom_bar(stat = "identity", position = position_dodge())
+  
+  
+
+
+
+```
+
+
+
+
+### Predict with error
+
+
+```{r}
+
+# Deterministic model
+
+vo2max155 <- -1945 + 38.2 * 155
+vo2max165 <- -1945 + 38.2 * 165
+
+
+dat <- data.frame(pred = c(rnorm(1000, vo2max155, 72.2), 
+                           rnorm(1000, vo2max165, 72.2)))
+
+
+
+dat %>%
+  mutate(x =c(rep(155, 1000), rep(165, 1000))) %>%
+  ggplot(aes(x, pred)) + 
+  
+  
+  coord_cartesian(xlim = c(145, 175), 
+                  ylim = c(3500, 5000)) +
+  
+  geom_point(alpha = 0.1, color = "steelblue", size = 2) + 
+  
+  geom_abline(intercept = -1945, slope = 38.2)
+
+
+```
+
+
+### The hypertrophy data set
+
+The hypertrophy data set can be used to set up hypotheses about e.g. what is associated with muscle growth. Muscle growth can be measured using vastus lateralis thickness. In the `hypertrophy` data set we have `VL_T1`, `VL_T2` etc containing information on vastus lateralis thickness in cm.
+
+
+To create a model that gives us the average change in VL per group.
+
+```{r}
+
+library(exscidata)
+library(tidyverse)
+
+hypertrophy %>%
+  print()
+
+dat <- hypertrophy %>%
+  select(PARTICIPANT, GROUP, VL_T1: VL_T4) %>%
+  mutate(delta_vl = VL_T3 - VL_T1) %>%
+  print()
+
+factor(dat$GROUP)
+
+
+
+m <- lm(delta_vl ~ GROUP, dat)
+
+summary(m)
+
+
+```
+
+
+To get a model that tells us about the average change in VL when we use a continuous predictor in the data set. 
+
+
+```{r}
+
+
+dat <- hypertrophy %>%
+  select(PARTICIPANT, GROUP, VL_T1: VL_T4, TESTOSTERONE_T1) %>%
+  mutate(delta_vl = VL_T3 - VL_T1) %>%
+  print()
+
+m <- lm(delta_vl ~ TESTOSTERONE_T1, dat)
+
+summary(m)
+
+
+
+```
+
+
+
+
+
