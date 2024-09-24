@@ -1,0 +1,114 @@
+---
+title: "Notes 2024-09-24"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+- Sannsynlighet
+- Signifikans -> sammenheng med null-hypotese
+- Populasjonen og utvalg -> statistisk inferens
+- P-verdi -> sannsynlighet å observere et ekstremt eller enda mer ekstremt verdie enn det observerte (t-verdi)
+- t-verdi, hvor mange standardfeil estimatet er fra null
+- Målet med studier, å finne forskjeller
+- Målet med studier er å finne en forskjell, men vi bruker null-hypotesen som sier at det ikke er en forskjell
+
+
+## Draw conclusions based on a sample
+
+
+```{r}
+
+set.seed(1)
+
+# Population 
+A <- rnorm(1000, mean = 100, sd = 10)
+
+B <- rnorm(1000, mean = 92, sd = 10)
+
+# Sample
+a <- sample(A, 15, replace = FALSE)
+b <- sample(B, 15, replace = FALSE)
+
+
+# Using a t-test to compare the groups (population(s))
+t.test(a, b, paired = FALSE)
+
+
+
+```
+
+Example for-loop
+
+```{r}
+
+
+for(i in 1:3) {
+  
+  print(i)
+  Sys.sleep(3)
+  
+}
+
+
+
+
+```
+
+
+
+
+
+
+
+```{r}
+
+
+
+library(tidyverse)
+
+differences <- vector()
+
+for(i in 1:1000) {
+        
+     samp <- sample(c(a, b), 30, replace = FALSE)
+        
+     differences[i] <- mean(samp[1:15]) - mean(samp[16:30])
+        
+        
+}
+
+
+data.frame(differences) %>%
+        ggplot(aes(differences)) + geom_histogram() + 
+        geom_vline(xintercept = mean(a) - mean(b), color = "red", linewidth = 2)
+
+
+
+## Calculate a "p"-value for a one-tailed test
+
+extreme_diffs <- data.frame(differences) %>%
+  
+  filter(differences >= mean(a) - mean(b)) %>%
+  pull(differences)
+  
+  
+
+p_onetailed <- length(extreme_diffs) / 1000 
+
+
+## Calculate a p-value for a two-tailed test
+extreme_diffs <- data.frame(differences) %>%
+  
+  filter(abs(differences) >= mean(a) - mean(b)) %>%
+  pull(differences)
+  
+  
+
+p_twotailed <- length(extreme_diffs) / 1000 
+
+
+t.test(a, b, paired = FALSE, var.equal = TRUE)
+
+```
+
