@@ -1,0 +1,12 @@
+---
+title: "Notes 2024-09-26"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+## Notes
+
+See [this workshop](https://dhammarstrom.github.io/quant-methods-workshops/ws14-sampling-power-effects.html)
