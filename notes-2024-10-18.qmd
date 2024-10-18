@@ -1,0 +1,130 @@
+---
+title: "Notes 2024-10-18"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+- In this workshop we illustrate how we can simulate different causal models and see when a regression model might fool us.
+- The strategy is simple, we create variables based on other variables to model causal processes. 
+- Sometimes it might help our understanding to work with plausible numbers from e.g. previous research.
+
+
+
+
+## Simulating a confounder
+
+- A confounder is a variable that affects both the exposure and the outcome.
+
+
+```{r}
+
+
+
+
+
+```
+
+
+
+## Collider
+
+- A collider is affected by both the "exposure" and the outcome. 
+
+
+
+```{r}
+
+set.seed(1)
+library(tidyverse)
+## n in the population 
+n <- 100 
+
+
+
+## Training volume
+vol <- runif(n, min = 300, max = 500)
+
+## VO2max
+vo2max <- rnorm(n, mean = 55, sd  = 5) + 0.1 * vol - 55
+
+data.frame(vol) %>%
+  ggplot(aes(vol)) + geom_histogram()
+
+
+data.frame(vo2max) %>%
+  ggplot(aes(vo2max)) + geom_histogram()
+
+
+## Selection
+
+score <- (vol/max(vol)) + (vo2max / max(vo2max))
+
+cutoff <- quantile(score, 0.8)
+
+dat <- data.frame(vol, vo2max, score) %>%
+  mutate(selected = if_else(score >= cutoff, "ntg", "nontg")) %>%
+  print()
+
+
+dat %>%
+  filter(selected == "ntg") %>%
+  
+  ggplot(aes(vol, vo2max)) + geom_point() + 
+  geom_smooth(method = "lm")
+
+
+dat %>%
+  
+  
+  ggplot(aes(vol, vo2max, color = selected)) + geom_point() + 
+  geom_smooth(method = "lm") + 
+  geom_smooth(method = "lm", aes(color = NULL)) 
+  
+
+
+
+```
+
+## Post-treatment bias
+
+- To "control for" a variable that is caused by the treatment is called post-treatment bias. It removes the effect of the treatment on the outcome of interest. 
+- To get a good estimate of the mediating effect we need more advanced methods. The short reccomendation is to focus on the total effect.
+
+```{r}
+
+## 
+n <- 100
+
+G <- sample(c("c", "e"), n, replace = TRUE)
+
+vo2max <- rnorm(n, mean = 55, sd = 5)
+
+dat <- data.frame(G, vo2max) %>%
+  rowwise() %>%
+  mutate(vo2max = if_else(G == "e", 
+                          vo2max * rnorm(1, 1.1, 0.05), 
+                          vo2max)) %>%
+  mutate(performance = if_else(G == "e", 
+                               200 + 0.5 * vo2max + rnorm(1, 10, 5) + rnorm(1, 0, 5), 200 + 0.5 * vo2max + rnorm(1, 0, 5))) %>%
+  
+  
+  print()
+  
+
+dat %>%
+  ggplot(aes(vo2max, performance)) + geom_point()
+
+
+m1 <- lm(performance ~ G, data = dat)
+m2 <- lm(performance ~ G + vo2max, data = dat)
+  
+summary(m1)
+summary(m2)
+```
+
+
+
+
+
+

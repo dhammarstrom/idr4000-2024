@@ -1,0 +1,134 @@
+---
+title: "Notes 2024-10-14"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+## Analysis of change scores
+
+
+```{r}
+
+library(tidyverse)
+library(exscidata)
+
+
+exscidata::tenthirty %>%
+  filter(exercise == "legpress", 
+         time != "mid") %>%
+  summarise(m = mean(load, na.rm = TRUE), 
+            .by = c(group, time)) %>%
+  
+
+  print()
+
+
+
+```
+
+
+
+```{r}
+
+dat <- exscidata::tenthirty %>%
+  filter(exercise == "legpress", 
+         time != "mid") %>%
+  pivot_wider(names_from = time, 
+              values_from = load) %>%
+  mutate(change = post - pre) %>%
+  print()
+
+
+mod <- t.test(change ~ group, 
+              data = dat, 
+              var.equal = TRUE)
+
+summary(lm(change ~ group, data = dat))
+
+
+```
+
+
+## Post-only scores
+
+```{r}
+
+
+t.test(post ~ group, var.equal = TRUE, 
+       data = dat)
+
+
+
+```
+
+
+## Percentage change
+
+```{r}
+
+dat <- exscidata::tenthirty %>%
+  filter(exercise == "legpress", 
+         time != "mid") %>%
+  pivot_wider(names_from = time, 
+              values_from = load) %>%
+  mutate(change = 100 *((post - pre) / pre)) %>%
+  print()
+
+
+mod <- t.test(change ~ group, 
+              data = dat, 
+              var.equal = TRUE)
+
+mod
+```
+
+## From t-test to ANCOVA
+
+```{r}
+
+dat <- exscidata::tenthirty %>%
+  filter(exercise == "legpress", 
+         time != "mid") %>%
+  pivot_wider(names_from = time, 
+              values_from = load) %>%
+  mutate(change = post - pre) %>%
+  print()
+
+m1 <- lm(change ~ group, data = dat)
+
+m2 <- lm(post ~ group + pre, data = dat)
+m3 <- lm(change ~ group + pre, data = dat)
+
+
+summary(m1)
+summary(m2)
+summary(m3)
+
+```
+
+
+```{r}
+
+dat %>%
+  ggplot(aes(pre, post, color = group)) + 
+  
+  geom_abline(intercept = coef(m2)[1] , 
+              slope = coef(m2)[3]) +
+
+  geom_abline(intercept = coef(m2)[1] + coef(m2)[2], 
+              slope = coef(m2)[3]) +
+  
+  geom_point()
+
+
+
+
+```
+
+
+
+
+
