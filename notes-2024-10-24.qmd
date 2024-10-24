@@ -1,0 +1,485 @@
+---
+title: "Notes 2024-10-24"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+## Introduction
+
+- We are constructing a simulation function that can be used to simulate a parallel group design with pre- to post-intervention measurements.
+
+
+```{r}
+
+library(tidyverse)
+
+# n, number of participants, total sample size
+# m, mean baseline measurement (cm^2)
+# b0, between participant variation in baseline (SD)
+# b1, between participant variation in change (SD)
+# me, measurement error (error in estimating the true SD) 
+# beta_A, beta_B, "fixed"/"population" effects in each group
+
+simulate_study <- function(n = 80, 
+                           m = 82, 
+                           b0 = 12, 
+                           b1 = 6, 
+                           me = 4, 
+                           beta_A = 10, 
+                           beta_B = 15, 
+                           seed = 1) {
+        
+        set.seed(seed)
+
+        ## Simulate true pre values
+        true_pre <- rnorm(n, m, b0)
+        meassured_pre <- rnorm(n, true_pre, sd = me)
+
+        ## Average effects in two groups
+        A <- rep(beta_A, n/2)
+        B <- rep(beta_B, n/2)
+
+        ## Between participant variation in post-values
+        b <- rnorm(n, 0, b1)
+
+        ## Group-wise post-intervention values
+        true_post <- true_pre + c(A, B) + b
+
+        # Measured post
+        meassured_post <- rnorm(n, true_post, sd = me)
+
+        # Combine into data frame
+        dat <- data.frame(id = 1:n, 
+                          group = rep(c("A", "B"), each = n/2),
+                          true_pre,            
+                          meassured_pre, 
+                          true_post, 
+                          meassured_post)
+        
+        return(dat)
+        
+}
+
+
+```
+
+- Using the simulation function we can simulate data to explore how measurement error affect regression towards the mean. 
+- When a participant is measured with a large positive or negative error, we can anticipate that the next measurement will be closer to the true mean. This pattern will produce a negative relationship between pre-scores and change scores.
+
+
+```{r}
+
+dat1 <- simulate_study(n = 80, 
+                           m = 82, 
+                           b0 = 12, 
+                           b1 = 6, 
+                           me = 8, 
+                           beta_A = 10, 
+                           beta_B = 15, 
+                           seed = 1)
+
+
+# What is the relationship between pre and change?
+
+tibble(dat1) %>%
+  mutate(change_true = true_post - true_pre, 
+         change_meassured = meassured_post - meassured_pre) %>%
+  # Plotting the measured values as black points and
+  # black regression line
+  ggplot(aes(meassured_pre, change_meassured)) + 
+  geom_point() +  
+  geom_smooth(method = "lm", 
+              se = FALSE, color = "black") + 
+  # Adding true values with orange color.
+  geom_point(aes(true_pre, change_true), 
+             color = "orange") + 
+    geom_smooth(aes(true_pre, change_true), 
+                color = "orange", 
+                method = "lm",
+                se = FALSE)
+  
+
+```
+
+## Descriptive statistics
+
+- Can we recover the "true" effect in our descriptive statistics?
+
+```{r}
+
+tibble(dat1) %>%
+    mutate(change_true = true_post - true_pre, 
+         change_meassured = meassured_post - meassured_pre) %>%
+  pivot_longer(names_to = "var", 
+               values_to = "value", 
+               cols = true_pre:change_meassured) %>%
+  
+  summarise(.by = c(group, var), 
+            m = mean(value), 
+            s = sd(value)) %>%
+  
+  arrange(var) %>%
+  
+  print()
+  
+
+
+
+```
+
+
+## Inferential statistics
+
+### *t*-test
+
+- The *t*-test gives us an estimate of difference in difference between groups $\Delta_A - \Delta_B = (\text{post}_A - \text{pre}_A) - (\text{post}_B - \text{pre}_B)$
+
+
+```{r}
+
+dat2 <- tibble(dat1) %>%
+    mutate(change_true = true_post - true_pre, 
+         change_meassured = meassured_post - meassured_pre) 
+
+# T-test of measured scores
+t_measured <- t.test(change_meassured ~ group, data = dat2)
+
+# T-test of true scores
+t_true <- t.test(change_true ~ group, data = dat2)
+
+
+t_measured
+t_true
+
+
+# estimated difference in differences
+t_measured$estimate[2] - t_measured$estimate[1]
+
+
+t_true$estimate[2] - t_true$estimate[1]
+
+
+```
+
+- A similar model can be constructed using `lm`
+
+
+### ANCOVA
+
+- We have regression towards the mean!
+- An ANCOVA model can potentially address this issue by answering the question "what is the difference between groups at a specific pre-intervention value?"
+
+
+```{r}
+
+
+dat3 <- tibble(dat1) %>%
+    mutate(change_true = true_post - true_pre, 
+         change_meassured = meassured_post - meassured_pre) 
+
+
+m1 <- lm(meassured_post ~ meassured_pre + group, data = dat3)
+
+summary(m1)
+
+m2 <- lm(change_meassured ~ meassured_pre + group, data = dat3)
+
+summary(m2)
+
+
+m3 <- lm(change_true ~ true_pre + group, data = dat3)
+
+summary(m3)
+
+
+
+
+```
+
+
+### Mixed-effects model, or varying-intercepts model
+
+
+- We can think of two potential models using varying-intercepts. One model "controls for" baseline differences between group. This is equivalent to what we get from the *t*-test. The other model assumes that people are sampled from the same population while accounting for their pre-internvention values. 
+
+- The second model should resemble an ANCOVA
+
+
+```{r}
+
+
+dat4 <- tibble(dat1) %>%
+  pivot_longer(names_to = "var", 
+               values_to = "csa", 
+               cols = true_pre:meassured_post) %>%
+  separate(var, into = c("measurement", "time"), sep = "_") %>%
+  mutate(time = factor(time, levels = c("pre", "post"))) %>% 
+  filter(measurement == "meassured") %>%
+  # To accomplish the 
+  mutate(time = if_else(time == "pre", 0, 1), 
+         group = if_else(group == "A", 0, 1)) %>%
+  
+  print()
+
+
+library(lme4)
+
+mm1 <- lmer(csa ~ time + group + group:time + (1|id), 
+            data = dat4)
+
+mm2 <- lmer(csa ~ time + group:time + (1|id), 
+            data = dat4)
+
+
+summary(mm1)
+
+summary(mm2)
+
+
+
+```
+
+
+## Multiple measurements per time-point
+
+- We re-design the simulation to include two measurements per participant at each time-point. 
+
+
+```{r}
+
+# n, number of participants, total sample size
+# m, mean baseline measurement (cm^2)
+# b0, between participant variation in baseline (SD)
+# b1, between participant variation in change (SD)
+# me, measurement error (error in estimating the true SD) 
+# beta_A, beta_B, "fixed"/"population" effects in each group
+# seed, the starting point of simulations
+simulate_study2 <- function(n = 80, 
+                           m = 82, 
+                           b0 = 12, 
+                           b1 = 6, 
+                           me = 4, 
+                           beta_A = 10, 
+                           beta_B = 15, 
+                           seed = 1) {
+        
+        set.seed(seed)
+
+        ## Simulate true pre values
+        true_pre_1 <- rnorm(n, m, b0)
+        meassured_pre_1 <- rnorm(n, true_pre_1, sd = me)
+        meassured_pre_2 <- rnorm(n, true_pre_1, sd = me)
+
+        ## Average effects in two groups
+        A <- rep(beta_A, n/2)
+        B <- rep(beta_B, n/2)
+
+        ## Between participant variation in post-values
+        b <- rnorm(n, 0, b1)
+
+        ## Group-wise post-intervention values
+        true_post_1 <- true_pre_1 + c(A, B) + b
+
+        # Measured post
+        meassured_post_1 <- rnorm(n, true_post_1, sd = me)
+        meassured_post_2 <- rnorm(n, true_post_1, sd = me)
+
+        # Combine into data frame
+        dat <- data.frame(id = 1:n, 
+                          group = rep(c("A", "B"), each = n/2),
+                          true_pre_1,            
+                          meassured_pre_1, 
+                          meassured_pre_2, 
+                          true_post_1, 
+                          meassured_post_1, 
+                          meassured_post_2)
+        
+        return(dat)
+        
+        
+}
+
+
+
+
+```
+
+
+
+- Let us extend the varying-effects models with a varying slope. 
+
+
+
+```{r}
+
+dat5 <- simulate_study2(n = 80, 
+                           m = 82, 
+                           b0 = 12, 
+                           b1 = 6, 
+                           me = 8, 
+                           beta_A = 10, 
+                           beta_B = 15, 
+                           seed = 1) %>%
+  tibble() %>%
+  pivot_longer(names_to = "var", 
+               values_to = "csa", 
+               cols = true_pre_1:meassured_post_2) %>%
+  separate(var, into = c("measurement", "time", "replicate"), sep = "_") %>%
+  mutate(time = factor(time, levels = c("pre", "post"))) %>% 
+  filter(measurement == "meassured") %>%
+  # To accomplish the 
+  mutate(time = if_else(time == "pre", 0, 1), 
+         group = if_else(group == "A", 0, 1)) %>%
+  mutate(id = paste0("id", id)) %>%
+  
+  print()
+
+
+# Difference in difference 
+
+mm3 <- lmer(csa ~ time + group + group:time + (1 + time|id), 
+            data = dat5)
+
+mm4 <- lmer(csa ~ time + group:time + (1 + time|id), 
+            data = dat5)
+
+
+summary(mm3)
+
+summary(mm4)
+
+
+
+```
+
+## Bonus, estimating true participant level effects
+
+- It turns out that using a multilevel model comes with the advantage of getting more precise estimates.The model shares information between participants and therefore we get estimates, on average, for participants that are closer to the "true" value!
+
+
+```{r}
+
+dat6 <- simulate_study2(n = 80, 
+                           m = 82, 
+                           b0 = 12, 
+                           b1 = 6, 
+                           me = 8, 
+                           beta_A = 10, 
+                           beta_B = 15, 
+                           seed = 1) %>%
+  mutate(id = paste0("id", id))
+
+
+observed_change <- dat6 %>%
+   pivot_longer(names_to = "var", 
+               values_to = "csa", 
+               cols = true_pre_1:meassured_post_2) %>%
+  separate(var, into = c("measurement", "time", "replicate"), sep = "_") %>%
+  
+  summarise(.by = c(id, time, measurement), 
+            m = mean(csa)) %>%
+  pivot_wider(names_from = time, 
+              values_from = m) %>%
+  mutate(change = post - pre) %>%
+  print()
+
+
+
+p1 <- ranef(mm4) %>%
+  data.frame() %>%
+  tibble() %>%
+  pivot_wider(names_from = term, values_from = c(condval, condsd)) %>%
+  mutate(id = grp) %>%
+  select(id, 
+         int = `condval_(Intercept)`, 
+         int_sd = `condsd_(Intercept)`, 
+         slp = condval_time, 
+         slp_sd = condsd_time) %>%
+   inner_join(dat6) %>%
+  # Add fixed effects
+  mutate(slp = if_else(group == "A", slp + fixef(mm4)[2], slp + fixef(mm4)[2] + fixef(mm4)[3])) %>%
+
+  mutate(id = factor(id), 
+         id = fct_reorder(id, slp)) %>% 
+  
+  
+  ggplot(aes(id, slp)) + 
+  geom_segment(aes(x = id, xend = id, 
+               y = slp - slp_sd, 
+               yend = slp + slp_sd), 
+               linewidth = 2, 
+               color = "gray80") +
+  
+  geom_point(aes()) + 
+  
+  geom_point(data = observed_change, 
+             aes(id, change, color = measurement))  +
+  labs(x = "Participant ID", 
+       y = "Change from pre- to post", 
+       caption = "Black points are model estimates, measured values are average\n of the observed and true are the unmeasured true values for each participant") + 
+  theme(axis.text.x = element_blank())
+
+
+p2 <- ranef(mm4) %>%
+  data.frame() %>%
+  tibble() %>%
+  pivot_wider(names_from = term, values_from = c(condval, condsd)) %>%
+  mutate(id = grp) %>%
+  select(id, 
+         int = `condval_(Intercept)`, 
+         int_sd = `condsd_(Intercept)`, 
+         slp = condval_time, 
+         slp_sd = condsd_time) %>%
+   inner_join(dat6) %>%
+  # Add fixed effects
+  mutate(slp = if_else(group == "A", slp + fixef(mm4)[2], slp + fixef(mm4)[2] + fixef(mm4)[3])) %>%
+
+  mutate(id = factor(id), 
+         id = fct_reorder(id, slp)) %>%
+  inner_join(observed_change %>%
+               select(id, measurement, change) %>%
+               pivot_wider(values_from = change, names_from = measurement)) %>%
+  select(id, slp, true, meassured) %>%
+  
+  mutate(error_est = (slp - true)^2, 
+         error_obs = (meassured - true)^2) %>%
+  select(id, error_est, error_obs) %>%
+  pivot_longer(names_to = "error", 
+               values_to = "val", 
+               cols = error_est:error_obs) %>%
+  
+  ggplot(aes(id, val, fill = error)) + geom_bar(stat = "identity", 
+                                                position = position_dodge()) + 
+  labs(x = "Participant ID", 
+       y = "(Estimate/Observed - True effect)^2") + 
+  theme(axis.text.x = element_blank())
+  
+
+
+
+library(cowplot)
+
+plot_grid(p1, p2, ncol = 1, align = "h")
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

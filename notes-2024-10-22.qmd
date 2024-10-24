@@ -1,0 +1,224 @@
+---
+title: "Notes 2024-10-22"
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+## Varying effects models
+
+- A varying intercept and varying slope model can be fitted in R using the `lme4` package.
+
+- We need the following packages:
+
+```{r}
+library(tidyverse)
+library(lme4)
+```
+
+- See `?sleepstudy` for details on the data
+
+- Exploring the data:
+
+```{r}
+
+dat <- sleepstudy %>%
+  filter(Days >= 2)
+
+dat %>%
+  ggplot(aes(Days, Reaction)) + geom_point() +
+  facet_wrap(~ Subject)
+
+
+```
+
+- `lme4` has a simple syntax:
+
+
+```{r}
+# Fitting a model with a varying intercept
+m1 <- lmer(Reaction ~ Days + (1|Subject), data = dat)
+
+# Fitting a model with varying intercepts and slopes
+m2 <- lmer(Reaction ~ Days + (1 + Days|Subject), data = dat)
+
+# Fitting a model with varying intercepts and slopes, 
+# but no correlations among intercepts and slopes
+m3 <- lmer(Reaction ~ Days + (1|Subject) + (0 + Days|Subject), data = dat)
+
+
+summary(m1)
+
+summary(m2)
+
+summary(m3)
+
+```
+
+
+
+## Pre-post data with varying effects
+
+- A varying effects model fitted with `lme4` needs enough data to estimate effects. 
+
+
+```{r}
+
+
+library(exscidata)
+
+
+dat <- exscidata::tenthirty %>%
+  filter(exercise == "benchpress", 
+         time != "mid") %>%
+  mutate(time = factor(time, 
+                       levels = c("pre", "post"))) %>%
+
+  print()
+
+# A simple model only including time
+m1 <- lm(load ~ time, data = dat)
+summary(m1)
+
+# A simple model including time and group
+m2 <- lm(load ~ time + group, data = dat)
+summary(m2)
+
+# A simple model including time and group, 
+# and interaction
+m3 <- lm(load ~ time + group + time:group, data = dat)
+summary(m3)
+
+
+## Moving to a varying effects model
+mm1 <- lmer(load ~ time + (1|participant),
+            data = dat)
+
+summary(mm1)
+
+## Adding group
+mm2 <- lmer(load ~ time + group +
+              (1|participant), 
+            data = dat)
+
+summary(mm2)
+
+## Adding an interaction 
+mm3 <- lmer(load ~ time + group + 
+              time:group +
+              (1|participant), 
+            data = dat)
+
+summary(mm3)
+
+## Adding varying slopes
+mm4 <- lmer(load ~ time + group + 
+              time:group +
+              (1 + time | participant), 
+            data = dat)
+
+
+
+
+
+```
+
+
+
+## A simple alternative to the random intercept model
+
+
+```{r}
+
+dat %>%
+  pivot_wider(names_from = time, 
+              values_from = load) %>%
+  mutate(change = post - pre) %>%
+  
+  summarise(.by = group, 
+            mpre = mean(pre, na.rm = TRUE), 
+            mpost = mean(post, na.rm = TRUE), 
+            mchange = mean(change, na.rm = TRUE)) %>%
+  
+  print()
+
+
+
+dat2 <- dat %>%
+  pivot_wider(names_from = time, 
+              values_from = load) %>%
+  mutate(change = post - pre) %>%
+  filter(complete.cases(.)) %>%
+  print()
+
+datmm <- dat %>%
+  filter(participant %in% 
+unique(dat2$participant)) %>%
+  mutate(time = factor(time, level = c("pre", "post")))
+
+
+mm <- lmer(load ~ time + group + time:group + 
+             (1|participant), 
+           data = datmm)
+
+
+t.test(change ~ group, data = dat2, 
+       var.equal = TRUE)
+
+summary(mm)
+
+
+## Adiing the mid timepoint
+
+dat <- exscidata::tenthirty %>%
+  filter(exercise == "benchpress") %>%
+
+  mutate(time = factor(time, level = c("pre", "mid", "post")))
+
+
+mm <- lmer(load ~ time + group + time:group + 
+             (1|participant), 
+           data = dat)
+
+summary(mm)
+
+
+
+```
+
+
+## A complicated model for generaliziablity
+
+```{r}
+
+dat2 <- exscidata::tenthirty %>%
+  mutate(.by = exercise, 
+         load = load /max(load, na.rm = TRUE)) %>%
+  mutate(time = factor(time, levels = c("pre", "post"))) %>%
+  
+  print()
+
+
+
+m <- lmer(load ~ time + group + time:group + (1+ time||participant) + 
+            (1+time*group||exercise), data = dat2)
+
+
+summary(m)
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
